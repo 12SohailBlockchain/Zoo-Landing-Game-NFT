@@ -1,0 +1,193 @@
+web3 functionality add successfully working good
+
+7/09/2024
+
+import React, { useEffect, useState } from "react";
+import { Route, Routes } from "react-router-dom";
+
+// components and pages
+import Navbar from "./components/Navbar";
+import HomePage from "./pages/home-page/home-page";
+
+// hooks
+import { useTheme } from "./hooks/use-theme";
+import { useInterval } from "./hooks/use-interval";
+
+// global state
+import useAccount from "./store/account.store";
+
+// styles
+import "./scss/index.scss";
+
+// NEAR utils
+import { accountBalance, initializeContract } from "./utils/near";
+import GamePage from "./pages/game-page/game-page";
+import { getWorldTime } from "./utils/date-time";
+import Marketplace from "./pages/marketplace/marketplace";
+
+export const App = () => {
+  const [theme, changeTheme] = useTheme();
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [accountAddress, setAccountAddress] = useState(null); // Store account address
+
+  const {
+    setAccount,
+    setBalance,
+    setPoints,
+    setTempPoints,
+    setPermPoints,
+    setCoins,
+    timeRemaining,
+    setTimeRemaining,
+    accountLoading,
+    setAccountLoading,
+  } = useAccount();
+
+  // Function to handle MetaMask wallet connection
+  const connectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({
+          method: "eth_requestAccounts",
+        });
+        setAccountAddress(accounts[0]); // Set the connected account address
+        setWalletConnected(true);
+        console.log("MetaMask connected:", accounts[0]);
+      } catch (err) {
+        console.error("User rejected the request or there was an error", err);
+      }
+    } else {
+      alert("MetaMask is not installed. Please install it to use this feature.");
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await initializeContract();
+
+        const acc = window.walletConnection.account();
+        setAccount(acc);
+
+        if (acc && acc.accountId) {
+          const bal = await accountBalance();
+          setBalance(bal);
+
+          const accountDetails = await window.contract.get_status({
+            account_id: acc.accountId,
+          });
+
+          const tempPoints = accountDetails?.temp_points || 0;
+          const permPoints = accountDetails?.perm_points || 0;
+          const totalPoints = tempPoints + permPoints;
+          const coins = localStorage.getItem("coins") ?? 5;
+          const currentTime = await getWorldTime();
+          const timeRemaining =
+            accountDetails?.last_updated_at
+              ? currentTime - accountDetails?.last_updated_at > 24 * 60 * 60
+                ? 0
+                : 24 * 60 * 60 - (currentTime - accountDetails?.last_updated_at)
+              : 24 * 60 * 60;
+
+          setPoints(totalPoints);
+          setTempPoints(tempPoints);
+          setPermPoints(permPoints);
+          setCoins(+coins);
+          localStorage.setItem("coins", +coins);
+          setTimeRemaining(timeRemaining);
+        }
+
+        setAccountLoading(false);
+      } catch (err) {
+        console.log(err);
+      }
+    })();
+  }, []); /* eslint-disable-line */
+
+  useInterval(() => {
+    if (accountLoading) {
+      return;
+    }
+
+    setTimeRemaining(timeRemaining - 1);
+  }, 1000);
+
+  if (accountLoading) return;
+
+  return (
+    <div className="app-container" data-theme={theme} style={appContainerStyle}>
+      <Navbar changeTheme={changeTheme} currentTheme={theme} />
+      
+      {/* MetaMask connection button */}
+      <div style={walletContainerStyle}>
+        {!walletConnected ? (
+          <button onClick={connectWallet} style={walletButtonStyle}>
+            Connect MetaMask Wallet
+          </button>
+        ) : (
+          <div style={walletInfoStyle}>
+            <p style={walletTextStyle}>Connected:</p>
+            <span style={walletAddressStyle}>{accountAddress}</span>
+          </div>
+        )}
+      </div>
+      
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="game" element={<GamePage />} />
+        <Route path="marketplace/*" element={<Marketplace />} />
+      </Routes>
+    </div>
+  );
+};
+
+export default App;
+
+// Inline CSS styles for the wallet button and address
+const appContainerStyle = {
+  textAlign: "center",
+  padding: "20px",
+  backgroundColor: "#f7f9fc",
+  minHeight: "100vh"
+};
+
+const walletContainerStyle = {
+  marginTop: "30px"
+};
+
+const walletButtonStyle = {
+  padding: "12px 24px",
+  fontSize: "16px",
+  fontWeight: "bold",
+  backgroundColor: "#4CAF50",
+  color: "#fff",
+  border: "none",
+  borderRadius: "10px",
+  cursor: "pointer",
+  boxShadow: "0px 4px 8px rgba(0, 0, 0, 0.1)",
+  transition: "background-color 0.3s ease",
+};
+
+const walletInfoStyle = {
+  marginTop: "20px",
+  padding: "15px",
+  backgroundColor: "#fff",
+  borderRadius: "8px",
+  boxShadow: "0px 4px 8px rgba(0, 0, 0, 0.1)",
+  display: "inline-block",
+  textAlign: "center"
+};
+
+const walletTextStyle = {
+  margin: "0",
+  fontSize: "14px",
+  color: "#333"
+};
+
+const walletAddressStyle = {
+  marginTop: "8px",
+  fontSize: "14px",
+  fontWeight: "bold",
+  color: "#007bff",
+  wordBreak: "break-all"
+};
